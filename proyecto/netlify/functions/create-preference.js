@@ -1,7 +1,7 @@
 // Esta función corre en el servidor de Netlify (nunca en el navegador del cliente).
 // Usa tu Access Token secreto de Mercado Pago, guardado como variable de entorno
 // MP_ACCESS_TOKEN en la configuración del sitio en Netlify, para crear un link de
-// pago (preferencia) por el total exacto del carrito.
+// pago (preferencia) por el total exacto del carrito, incluyendo los datos de envío.
 
 exports.handler = async function (event) {
   const headers = {
@@ -44,6 +44,7 @@ exports.handler = async function (event) {
     }));
 
     const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || "";
+    const shipping = body.shipping && typeof body.shipping === "object" ? body.shipping : null;
 
     const preference = {
       items,
@@ -54,6 +55,41 @@ exports.handler = async function (event) {
       },
       auto_return: "approved",
     };
+
+    if (shipping) {
+      const fullName = String(shipping.name || "").trim();
+      const parts = fullName.split(" ").filter(Boolean);
+      const firstName = parts.shift() || "";
+      const lastName = parts.join(" ");
+
+      preference.payer = {
+        name: firstName || undefined,
+        surname: lastName || undefined,
+        phone: shipping.phone ? { number: String(shipping.phone).slice(0, 30) } : undefined,
+        address: shipping.address
+          ? { street_name: String(shipping.address).slice(0, 200), zip_code: String(shipping.zip || "").slice(0, 20) }
+          : undefined,
+      };
+
+      preference.shipments = {
+        receiver_address: {
+          zip_code: String(shipping.zip || "").slice(0, 20),
+          street_name: String(shipping.address || "").slice(0, 200),
+          city_name: String(shipping.city || "").slice(0, 100),
+          state_name: String(shipping.province || "").slice(0, 100),
+        },
+      };
+
+      // Guardamos también los datos de envío en external_reference para verlos fácil en el panel de Mercado Pago.
+      preference.external_reference = JSON.stringify({
+        name: fullName,
+        phone: shipping.phone || "",
+        address: shipping.address || "",
+        city: shipping.city || "",
+        province: shipping.province || "",
+        zip: shipping.zip || "",
+      }).slice(0, 600);
+    }
 
     const mpResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
       method: "POST",
