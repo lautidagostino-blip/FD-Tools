@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Panel de stock — F.D Tools</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --negro:#0c0c0a; --negro-2:#17170f; --carton:#1f1f18;
+    --amarillo:#f8b912; --blanco:#faf9f4; --gris:#b9b6ab; --gris-linea:#33322a;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--negro); color:var(--blanco);
+    font-family:'Inter',sans-serif; padding:32px 20px 80px;
+  }
+  .wrap{max-width:560px; margin:0 auto;}
+  h1{font-size:1.4rem; margin-bottom:6px;}
+  p.sub{color:var(--gris); font-size:0.9rem; margin-bottom:28px;}
+  .box{background:var(--negro-2); border:1px solid var(--gris-linea); border-radius:8px; padding:22px;}
+  label{display:block; font-size:0.85rem; font-weight:700; color:var(--gris); margin-bottom:8px;}
+  input{
+    width:100%; background:var(--carton); border:1.5px solid var(--gris-linea); border-radius:5px;
+    padding:11px 12px; color:var(--blanco); font-size:0.95rem; font-family:inherit;
+  }
+  input:focus{outline:none; border-color:var(--amarillo);}
+  button{
+    background:var(--amarillo); color:var(--negro); border:none; border-radius:5px;
+    font-weight:800; font-size:0.92rem; padding:12px 20px; cursor:pointer; margin-top:8px;
+  }
+  button:hover{opacity:0.9;}
+  button[disabled]{opacity:0.5; cursor:not-allowed;}
+  .row{
+    display:flex; align-items:center; justify-content:space-between; gap:14px;
+    padding:14px 0; border-bottom:1px solid var(--gris-linea);
+  }
+  .row:last-child{border-bottom:none;}
+  .row .name{font-size:0.9rem; font-weight:600; flex:1;}
+  .row input{width:80px; text-align:center;}
+  .msg{margin-top:16px; font-size:0.88rem; font-weight:600;}
+  .msg.ok{color:#8fe0a3;}
+  .msg.err{color:#f0a294;}
+  #loginBox, #panelBox{display:none;}
+  #loginBox.show, #panelBox.show{display:block;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Panel de stock — F.D Tools</h1>
+  <p class="sub">Actualizá las cantidades disponibles de cada producto.</p>
+
+  <div class="box" id="loginBox">
+    <label for="adminKey">Clave de administrador</label>
+    <input type="password" id="adminKey" placeholder="Tu clave">
+    <button id="loginBtn">Entrar</button>
+    <p class="msg" id="loginMsg"></p>
+  </div>
+
+  <div class="box" id="panelBox">
+    <div id="rows">Cargando…</div>
+    <button id="saveBtn">Guardar cambios</button>
+    <p class="msg" id="saveMsg"></p>
+  </div>
+</div>
+
+<script>
+(function(){
+  var products = [
+    { id: 'p1', name: 'Taladro Percutor Caterpillar 600w + Amoladora Angular 750w' },
+    { id: 'p2', name: 'Amoladora Angular Cat Dx371 + 3 Discos Caterpillar' },
+    { id: 'p3', name: 'Espuma Poliuretano Multipropósito Venier — Caja 12 Unidades' },
+    { id: 'p4', name: 'Amoladora Bosch Gws 770 + 3 Discos Corte 115 mm' },
+    { id: 'p5', name: 'Amoladora Angular CAT DX371 750W' },
+    { id: 'p6', name: 'Amoladora Bosch Gws 770w 4 1/2 — 115mm + 5 Discos Azul' },
+  ];
+
+  var adminKey = sessionStorage.getItem('fd_admin_key') || '';
+  var loginBox = document.getElementById('loginBox');
+  var panelBox = document.getElementById('panelBox');
+  var rowsEl = document.getElementById('rows');
+
+  function showPanel(){
+    loginBox.classList.remove('show');
+    panelBox.classList.add('show');
+    loadStock();
+  }
+  function showLogin(){
+    panelBox.classList.remove('show');
+    loginBox.classList.add('show');
+  }
+
+  function loadStock(){
+    fetch('/.netlify/functions/stock')
+      .then(function(r){ return r.json(); })
+      .then(function(stock){
+        rowsEl.innerHTML = products.map(function(p){
+          var qty = stock[p.id] != null ? stock[p.id] : 0;
+          return '<div class="row">' +
+            '<span class="name">'+p.name+'</span>' +
+            '<input type="number" min="0" id="qty-'+p.id+'" value="'+qty+'">' +
+          '</div>';
+        }).join('');
+      })
+      .catch(function(){
+        rowsEl.innerHTML = '<p class="msg err">No se pudo cargar el stock.</p>';
+      });
+  }
+
+  document.getElementById('loginBtn').addEventListener('click', function(){
+    var key = document.getElementById('adminKey').value.trim();
+    if (!key){ return; }
+    adminKey = key;
+    sessionStorage.setItem('fd_admin_key', key);
+    showPanel();
+  });
+
+  document.getElementById('saveBtn').addEventListener('click', function(){
+    var stock = {};
+    products.forEach(function(p){
+      var el = document.getElementById('qty-'+p.id);
+      stock[p.id] = Math.max(0, parseInt(el.value, 10) || 0);
+    });
+
+    var saveBtn = document.getElementById('saveBtn');
+    var saveMsg = document.getElementById('saveMsg');
+    saveBtn.disabled = true;
+    saveMsg.textContent = '';
+
+    fetch('/.netlify/functions/stock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set', adminKey: adminKey, stock: stock })
+    })
+    .then(function(res){
+      if (res.status === 401){
+        sessionStorage.removeItem('fd_admin_key');
+        showLogin();
+        document.getElementById('loginMsg').textContent = 'Clave incorrecta.';
+        document.getElementById('loginMsg').className = 'msg err';
+        throw new Error('unauthorized');
+      }
+      return res.json();
+    })
+    .then(function(){
+      saveMsg.textContent = 'Stock actualizado ✓';
+      saveMsg.className = 'msg ok';
+    })
+    .catch(function(err){
+      if (err.message !== 'unauthorized'){
+        saveMsg.textContent = 'Hubo un error al guardar.';
+        saveMsg.className = 'msg err';
+      }
+    })
+    .finally(function(){
+      saveBtn.disabled = false;
+    });
+  });
+
+  if (adminKey){ showPanel(); } else { showLogin(); }
+})();
+</script>
+</body>
+</html>
