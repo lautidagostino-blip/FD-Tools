@@ -22,7 +22,11 @@ exports.handler = async function (event) {
     return { statusCode: 200, headers, body: "" };
   }
 
-  const store = getStore("fd-tools-stock");
+  const store = getStore({
+    name: "fd-tools-stock",
+    siteID: "9ac1e6d3-858f-49c3-8cbe-fccee3fb1314",
+    token: process.env.BLOBS_TOKEN,
+  });
 
   if (event.httpMethod === "GET") {
     const stock = (await store.get("stock", { type: "json" })) || DEFAULT_STOCK;
